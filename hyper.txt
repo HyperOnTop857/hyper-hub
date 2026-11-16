@@ -1,0 +1,1020 @@
+-- ============================================
+-- Hyper-Hub - UI Library v1.0
+-- GitHub raw URL üzerinden loadstring ile çekilir.
+-- Kullanım: local UI = loadstring(game:HttpGet("RAW_URL"))()
+-- ============================================
+
+local UILib = {}
+
+-- ============================================
+-- SERVİSLER
+-- ============================================
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui          = game:GetService("CoreGui")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local LocalPlayer      = Players.LocalPlayer
+
+-- ============================================
+-- RENK PALETİ
+-- ============================================
+UILib.Colors = {
+    Background   = Color3.fromRGB(8,   10,  20),
+    Surface      = Color3.fromRGB(14,  17,  32),
+    SurfaceLight = Color3.fromRGB(22,  27,  50),
+    Accent1      = Color3.fromRGB(120, 80,  255),
+    Accent2      = Color3.fromRGB(80,  50,  200),
+    Accent3      = Color3.fromRGB(0,   200, 255),
+    Accent4      = Color3.fromRGB(160, 100, 255),
+    TextPrimary  = Color3.fromRGB(230, 235, 255),
+    TextSecondary= Color3.fromRGB(160, 165, 200),
+    TextMuted    = Color3.fromRGB(90,  95,  130),
+    Success      = Color3.fromRGB(0,   220,  90),
+    Warning      = Color3.fromRGB(255, 190,   0),
+    Danger       = Color3.fromRGB(255,  60,  80),
+}
+local Colors = UILib.Colors
+
+-- ============================================
+-- TEMEL YARDIMCI FONKSİYONLAR
+-- ============================================
+
+-- Instance oluşturucu
+function UILib.Create(className, props, children)
+    local inst = Instance.new(className)
+    for k, v in pairs(props or {}) do inst[k] = v end
+    for _, child in ipairs(children or {}) do child.Parent = inst end
+    return inst
+end
+local Create = UILib.Create
+
+-- Sürüklenebilir yapma
+function UILib.MakeDraggable(frame, handle)
+    local dragging, dragInput, mousePos, framePos = false, nil, nil, nil
+    handle = handle or frame
+
+    handle.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            mousePos  = inp.Position
+            framePos  = frame.Position
+            inp.Changed:Connect(function()
+                if inp.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    handle.InputChanged:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseMovement
+        or inp.UserInputType == Enum.UserInputType.Touch then
+            dragInput = inp
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(inp)
+        if not dragging or inp ~= dragInput then return end
+        local delta = inp.Position - mousePos
+        frame.Position = UDim2.new(
+            framePos.X.Scale, framePos.X.Offset + delta.X,
+            framePos.Y.Scale, framePos.Y.Offset + delta.Y
+        )
+    end)
+end
+local MakeDraggable = UILib.MakeDraggable
+
+-- ============================================
+-- BİLDİRİM SİSTEMİ
+-- ============================================
+local _notifCount = 0
+
+function UILib.Notify(title, message, duration)
+    duration = duration or 3
+    _notifCount = _notifCount + 1
+
+    local notifGui = Create("ScreenGui", {
+        Name = "HHNotif_" .. _notifCount,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        Parent = CoreGui
+    })
+
+    local card = Create("Frame", {
+        Size = UDim2.new(0, 285, 0, 72),
+        Position = UDim2.new(1, 10, 1, -90),
+        AnchorPoint = Vector2.new(0, 1),
+        BackgroundColor3 = Colors.Surface,
+        ZIndex = 200,
+        Parent = notifGui
+    }, {
+        Create("UICorner", { CornerRadius = UDim.new(0, 12) }),
+        Create("UIStroke", { Color = Colors.Accent1, Thickness = 1.5 }),
+        Create("Frame", {
+            Size = UDim2.new(0, 4, 1, 0),
+            BackgroundColor3 = Colors.Accent1,
+            ZIndex = 201
+        }, { Create("UICorner", { CornerRadius = UDim.new(0, 12) }) }),
+        Create("TextLabel", {
+            Text = "[ " .. tostring(title) .. " ]",
+            Size = UDim2.new(1, -20, 0, 24),
+            Position = UDim2.new(0, 14, 0, 8),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            TextColor3 = Colors.Accent1,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 201
+        }),
+        Create("TextLabel", {
+            Text = tostring(message),
+            Size = UDim2.new(1, -20, 0, 28),
+            Position = UDim2.new(0, 14, 0, 34),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextColor3 = Colors.TextSecondary,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextWrapped = true,
+            ZIndex = 201
+        })
+    })
+
+    TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(1, -300, 1, -90)
+    }):Play()
+
+    task.delay(duration, function()
+        local out = TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
+            Position = UDim2.new(1, 10, 1, -90)
+        })
+        out:Play()
+        out.Completed:Connect(function() notifGui:Destroy() end)
+    end)
+end
+
+-- ============================================
+-- LOADING SCREEN
+-- ============================================
+function UILib.CreateLoadingScreen()
+    local LoadGui = Create("ScreenGui", {
+        Name = "HyperHub_Loading",
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        IgnoreGuiInset = true,
+        Parent = CoreGui
+    })
+
+    local LoadScreen = Create("Frame", {
+        Name = "LoadScreen",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = Colors.Background,
+        ZIndex = 100,
+        Parent = LoadGui
+    })
+
+    -- Gradient arka plan
+    Create("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 100,
+        Parent = LoadScreen
+    }, {
+        Create("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Colors.Accent1),
+                ColorSequenceKeypoint.new(0.3, Colors.Background),
+                ColorSequenceKeypoint.new(0.7, Colors.Background),
+                ColorSequenceKeypoint.new(1, Colors.Accent2)
+            }),
+            Rotation = 45,
+            Transparency = NumberSequence.new(0.85)
+        })
+    })
+
+    -- Partiküller
+    for i = 1, 30 do
+        local p = Create("Frame", {
+            Size = UDim2.new(0, math.random(2,4), 0, math.random(2,4)),
+            Position = UDim2.new(math.random(), 0, math.random(), 0),
+            BackgroundColor3 = Colors.Accent3,
+            BackgroundTransparency = 0.3,
+            ZIndex = 101,
+            Parent = LoadScreen
+        }, { Create("UICorner", { CornerRadius = UDim.new(1,0) }) })
+        TweenService:Create(p, TweenInfo.new(math.random(8,15), Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true), {
+            Position = UDim2.new(math.random(), 0, math.random(), 0)
+        }):Play()
+    end
+
+    -- Merkez içerik
+    local CenterFrame = Create("Frame", {
+        Size = UDim2.new(0.9, 0, 0, 350),
+        Position = UDim2.new(0.05, 0, 0.5, -175),
+        BackgroundTransparency = 1,
+        ZIndex = 102,
+        Parent = LoadScreen
+    })
+
+    -- Logo
+    local LogoIcon = Create("TextLabel", {
+        Text = "",
+        Font = Enum.Font.GothamBlack,
+        TextSize = 100,
+        TextColor3 = Colors.Accent1,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 120),
+        ZIndex = 102,
+        Parent = CenterFrame
+    }, {
+        Create("UIStroke", { Color = Colors.Accent4, Thickness = 3, Transparency = 0.3 })
+    })
+    TweenService:Create(LogoIcon, TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+        TextTransparency = 0.2, TextSize = 110
+    }):Play()
+
+    -- Başlık
+    Create("TextLabel", {
+        Text = "HYPER-HUB",
+        Font = Enum.Font.GothamBlack,
+        TextSize = 60,
+        TextColor3 = Colors.TextPrimary,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 70),
+        Position = UDim2.new(0, 0, 0, 120),
+        ZIndex = 102,
+        Parent = CenterFrame
+    }, {
+        Create("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Colors.Accent1),
+                ColorSequenceKeypoint.new(0.5, Colors.Accent3),
+                ColorSequenceKeypoint.new(1, Colors.Accent1)
+            }),
+            Rotation = 45
+        })
+    })
+
+    Create("TextLabel", {
+        Text = "PREMIUM EDITION",
+        Font = Enum.Font.Gotham,
+        TextSize = 18,
+        TextColor3 = Colors.TextSecondary,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 30),
+        Position = UDim2.new(0, 0, 0, 190),
+        ZIndex = 102,
+        Parent = CenterFrame
+    })
+
+    -- Progress bar
+    local ProgressBar = Create("Frame", {
+        Size = UDim2.new(0.85, 0, 0, 6),
+        Position = UDim2.new(0.075, 0, 0, 250),
+        BackgroundColor3 = Colors.Surface,
+        ZIndex = 102,
+        Parent = CenterFrame
+    }, {
+        Create("UICorner", { CornerRadius = UDim.new(0,3) }),
+        Create("UIStroke", { Color = Colors.Accent2, Thickness = 1 })
+    })
+
+    local ProgressFill = Create("Frame", {
+        Size = UDim2.new(0, 0, 1, 0),
+        BackgroundColor3 = Colors.Accent1,
+        ZIndex = 103,
+        Parent = ProgressBar
+    }, {
+        Create("UICorner", { CornerRadius = UDim.new(0,3) }),
+        Create("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Colors.Accent1),
+                ColorSequenceKeypoint.new(1, Colors.Accent3)
+            })
+        })
+    })
+
+    local ProgressText = Create("TextLabel", {
+        Text = "0%",
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        TextColor3 = Colors.TextSecondary,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0,60,0,20),
+        Position = UDim2.new(0.5,-30,0,265),
+        ZIndex = 102,
+        Parent = CenterFrame
+    })
+
+    local StatusText = Create("TextLabel", {
+        Text = "Initializing...",
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextColor3 = Colors.TextMuted,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1,0,0,20),
+        Position = UDim2.new(0,0,0,290),
+        ZIndex = 102,
+        Parent = CenterFrame
+    })
+
+    -- Animasyon
+    task.spawn(function()
+        local messages = {
+            "Loading modules...", "Configuring UI...",
+            "Connecting to services...", "Optimizing performance...",
+            "Almost ready...", "Ready."
+        }
+        local start    = tick()
+        local duration = 3.5
+
+        while tick() - start < duration do
+            local elapsed  = tick() - start
+            local progress = elapsed / duration
+            local pct      = math.floor(progress * 100)
+            ProgressFill.Size = UDim2.new(progress, 0, 1, 0)
+            ProgressText.Text = pct .. "%"
+            local mi = math.clamp(math.floor(progress * #messages) + 1, 1, #messages)
+            StatusText.Text = messages[mi]
+            task.wait(0.05)
+        end
+
+        ProgressFill.Size = UDim2.new(1, 0, 1, 0)
+        ProgressText.Text = "100%"
+        StatusText.Text   = "Ready."
+        task.wait(0.5)
+
+        for _, v in ipairs(LoadScreen:GetDescendants()) do
+            pcall(function()
+                if v:IsA("Frame") or v:IsA("TextLabel") or v:IsA("ImageLabel") then
+                    TweenService:Create(v, TweenInfo.new(0.6), {
+                        BackgroundTransparency = 1, TextTransparency = 1
+                    }):Play()
+                end
+            end)
+        end
+        TweenService:Create(LoadScreen, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+        task.wait(0.7)
+        LoadGui:Destroy()
+    end)
+end
+
+-- ============================================
+-- ANA PENCERE (HubGui + MainPanel + Tabs)
+-- ============================================
+function UILib.CreateWindow(config)
+    config = config or {}
+    local tabData = config.Tabs or {
+        {Name="Home",     Icon="HOME", Color=Colors.Accent1},
+        {Name="Visual",   Icon="VIS",  Color=Colors.Accent2},
+        {Name="Aimbot",   Icon="AIM",  Color=Colors.Accent3},
+        {Name="Teleport", Icon="TP",   Color=Colors.Accent1},
+        {Name="Economy",  Icon="ECO",  Color=Colors.Accent2},
+        {Name="Settings", Icon="SET",  Color=Colors.Accent3},
+        {Name="Misc",     Icon="MSC",  Color=Colors.Accent1},
+    }
+
+    -- State
+    local ToggleStates      = {}
+    local SettingsCallbacks = {}
+    local Pages             = {}
+    local TabButtons        = {}
+    local CurrentPage       = tabData[1] and tabData[1].Name or "Home"
+
+    -- ScreenGui
+    local HubGui = Create("ScreenGui", {
+        Name = "HyperHub",
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        Parent = CoreGui
+    })
+
+    -- Boyutlar
+    local PANEL_W = math.min(680, workspace.CurrentCamera.ViewportSize.X * 0.95)
+    local PANEL_H = math.min(460, workspace.CurrentCamera.ViewportSize.Y * 0.80)
+    local TOP_H   = PANEL_H <= 380 and 60 or 75
+    local NAV_H   = PANEL_H <= 380 and 48 or 56
+    local NAV_Y   = TOP_H + 8
+    local PAGE_Y  = NAV_Y + NAV_H + 6
+
+    -- Ana panel
+    local MainPanel = Create("Frame", {
+        Name = "MainPanel",
+        Size = UDim2.new(0, PANEL_W, 0, PANEL_H),
+        Position = UDim2.new(0.5, -PANEL_W/2, 0.5, -PANEL_H/2),
+        BackgroundColor3 = Colors.Background,
+        BackgroundTransparency = 0.05,
+        ClipsDescendants = true,
+        Visible = false,
+        Parent = HubGui
+    }, {
+        Create("UICorner", { CornerRadius = UDim.new(0, 20) }),
+        Create("UIStroke", { Color = Colors.Accent1, Thickness = 2, Transparency = 0.2 })
+    })
+
+    MakeDraggable(MainPanel, MainPanel)
+
+    -- İç gölge
+    Create("Frame", {
+        Size = UDim2.new(1,-4,1,-4),
+        Position = UDim2.new(0,2,0,2),
+        BackgroundColor3 = Color3.new(0,0,0),
+        BackgroundTransparency = 0.8,
+        ZIndex = 0,
+        Parent = MainPanel
+    }, { Create("UICorner", { CornerRadius = UDim.new(0,18) }) })
+
+    -- Arka plan partikülleri
+    for i = 1, 15 do
+        local p = Create("Frame", {
+            Size = UDim2.new(0, math.random(20,60), 0, math.random(20,60)),
+            Position = UDim2.new(math.random(), 0, math.random(), 0),
+            BackgroundColor3 = Colors.Accent1,
+            BackgroundTransparency = 0.95,
+            ZIndex = 0,
+            Parent = MainPanel
+        }, { Create("UICorner", { CornerRadius = UDim.new(1,0) }) })
+        TweenService:Create(p,
+            TweenInfo.new(math.random(8,15), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+            { Position = UDim2.new(math.random(), 0, math.random(), 0) }
+        ):Play()
+    end
+
+    -- ---- TOP BAR ----
+    local TopBar = Create("Frame", {
+        Size = UDim2.new(1, 0, 0, TOP_H),
+        BackgroundTransparency = 1,
+        Parent = MainPanel
+    })
+
+    -- Profil kartı
+    Create("Frame", {
+        Size = UDim2.new(0, TOP_H <= 60 and 180 or 210, 0, TOP_H - 10),
+        Position = UDim2.new(0, 10, 0, 5),
+        BackgroundColor3 = Colors.Surface,
+        Parent = TopBar
+    }, {
+        Create("UICorner", { CornerRadius = UDim.new(0,12) }),
+        Create("UIStroke", { Color = Colors.Accent2, Thickness = 1.5 }),
+        Create("ImageLabel", {
+            Size = UDim2.new(0,50,0,50),
+            Position = UDim2.new(0,10,0.5,-25),
+            BackgroundTransparency = 1,
+            Image = Players:GetUserThumbnailAsync(
+                LocalPlayer.UserId,
+                Enum.ThumbnailType.HeadShot,
+                Enum.ThumbnailSize.Size420x420
+            )
+        }, { Create("UICorner", { CornerRadius = UDim.new(1,0) }) }),
+        Create("TextLabel", {
+            Text = LocalPlayer.Name,
+            Size = UDim2.new(1,-80,0,20),
+            Position = UDim2.new(0,70,0.5,-10),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            TextSize = 16,
+            TextColor3 = Colors.TextPrimary,
+            TextXAlignment = Enum.TextXAlignment.Left
+        }),
+        Create("TextLabel", {
+            Text = "Status: Active",
+            Size = UDim2.new(1,-80,0,16),
+            Position = UDim2.new(0,70,0.5,8),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextColor3 = Colors.Accent3,
+            TextXAlignment = Enum.TextXAlignment.Left
+        })
+    })
+
+    -- Başlık
+    Create("Frame", {
+        Size = UDim2.new(0,200,0,TOP_H),
+        Position = UDim2.new(0.5,-100,0,0),
+        BackgroundTransparency = 1,
+        Parent = TopBar
+    }, {
+        Create("TextLabel", {
+            Text = config.Title or "HYPER-HUB",
+            Font = Enum.Font.GothamBlack,
+            TextSize = TOP_H <= 60 and 22 or 28,
+            TextColor3 = Colors.TextPrimary,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1,0,0.5,0)
+        }, {
+            Create("UIGradient", {
+                Name = "TitleGrad",
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Colors.Accent1),
+                    ColorSequenceKeypoint.new(0.5, Colors.Accent3),
+                    ColorSequenceKeypoint.new(1, Colors.Accent1)
+                }),
+                Rotation = 0
+            })
+        }),
+        Create("TextLabel", {
+            Text = config.Subtitle or "PREMIUM EDITION",
+            Font = Enum.Font.Gotham,
+            TextSize = 14,
+            TextColor3 = Colors.TextSecondary,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1,0,0.5,0),
+            Position = UDim2.new(0,0,0.5,0)
+        })
+    })
+
+    -- Kapat butonu
+    local CloseBtn = Create("TextButton", {
+        Size = UDim2.new(0, 32, 0, 32),
+        Position = UDim2.new(1, -40, 0, 8),
+        BackgroundColor3 = Colors.Danger,
+        BackgroundTransparency = 0.5,
+        Text = "✕",
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextColor3 = Colors.TextPrimary,
+        AutoButtonColor = false,
+        Parent = TopBar
+    }, { Create("UICorner", { CornerRadius = UDim.new(0,8) }) })
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        MainPanel.Visible = false
+    end)
+
+    -- ---- NAVİGASYON ----
+    local NavContainer = Create("Frame", {
+        Size = UDim2.new(1,-30,0,NAV_H),
+        Position = UDim2.new(0,15,0,NAV_Y),
+        BackgroundTransparency = 1,
+        Parent = MainPanel
+    }, {
+        Create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding = UDim.new(0,8)
+        })
+    })
+
+    local PageContainer = Create("Frame", {
+        Size = UDim2.new(1,-30,1,-(PAGE_Y+8)),
+        Position = UDim2.new(0,15,0,PAGE_Y),
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+        Parent = MainPanel
+    })
+
+    -- Sayfa geçişi
+    local function SwitchPage(pageName)
+        if CurrentPage == pageName then return end
+        local oldPage = Pages[CurrentPage]
+        local newPage = Pages[pageName]
+        if not newPage then return end
+
+        local inLayout = newPage:FindFirstChildWhichIsA("UIListLayout")
+        if inLayout then
+            newPage.CanvasSize = UDim2.new(0,0,0, inLayout.AbsoluteContentSize.Y + 20)
+        end
+
+        newPage.Position = UDim2.new(1,0,0,0)
+        newPage.Visible  = true
+
+        TweenService:Create(oldPage, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
+            Position = UDim2.new(-1,0,0,0)
+        }):Play()
+
+        local tw = TweenService:Create(newPage, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {
+            Position = UDim2.new(0,0,0,0)
+        })
+        tw:Play()
+        tw.Completed:Connect(function()
+            oldPage.Visible  = false
+            oldPage.Position = UDim2.new(0,0,0,0)
+        end)
+
+        CurrentPage = pageName
+    end
+
+    -- Tab butonları + sayfalar
+    for i, data in ipairs(tabData) do
+        local tabColor = data.Color or Colors.Accent1
+        local tabBtn = Create("TextButton", {
+            Name = data.Name,
+            Text = data.Icon or data.Name,
+            Size = UDim2.new(0, NAV_H <= 48 and 56 or 64, 0, NAV_H - 6),
+            BackgroundColor3 = (i==1) and Colors.Accent1 or Colors.Surface,
+            Font = Enum.Font.GothamBold,
+            TextSize = 11,
+            TextColor3 = (i==1) and Colors.TextPrimary or Colors.TextSecondary,
+            AutoButtonColor = false,
+            Parent = NavContainer
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(0,12) }),
+            Create("UIStroke", {
+                Name = "Glow",
+                Color = tabColor,
+                Transparency = (i==1) and 0.3 or 1
+            })
+        })
+
+        tabBtn.MouseEnter:Connect(function()
+            if CurrentPage ~= data.Name then
+                TweenService:Create(tabBtn, TweenInfo.new(0.2), { BackgroundColor3 = Colors.SurfaceLight }):Play()
+            end
+        end)
+        tabBtn.MouseLeave:Connect(function()
+            if CurrentPage ~= data.Name then
+                TweenService:Create(tabBtn, TweenInfo.new(0.2), { BackgroundColor3 = Colors.Surface }):Play()
+            end
+        end)
+        tabBtn.MouseButton1Click:Connect(function()
+            for _, b in ipairs(TabButtons) do
+                TweenService:Create(b, TweenInfo.new(0.2), {
+                    BackgroundColor3 = Colors.Surface,
+                    TextColor3 = Colors.TextSecondary
+                }):Play()
+                local glow = b:FindFirstChild("Glow")
+                if glow then
+                    TweenService:Create(glow, TweenInfo.new(0.2), { Transparency = 1 }):Play()
+                end
+            end
+            TweenService:Create(tabBtn, TweenInfo.new(0.2), {
+                BackgroundColor3 = Colors.Accent1,
+                TextColor3 = Colors.TextPrimary
+            }):Play()
+            local glow = tabBtn:FindFirstChild("Glow")
+            if glow then
+                TweenService:Create(glow, TweenInfo.new(0.2), { Transparency = 0.3 }):Play()
+            end
+            SwitchPage(data.Name)
+        end)
+
+        table.insert(TabButtons, tabBtn)
+
+        local tabPage = Create("ScrollingFrame", {
+            Name = data.Name .. "Page",
+            Size = UDim2.new(1,0,1,0),
+            Position = UDim2.new(0,0,0,0),
+            BackgroundTransparency = 1,
+            ScrollBarThickness = 4,
+            ScrollBarImageColor3 = Colors.Accent1,
+            CanvasSize = UDim2.new(0,0,0,0),
+            Visible = (i==1),
+            Parent = PageContainer
+        })
+
+        local tabLayout = Create("UIListLayout", {
+            Padding = UDim.new(0,10),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = tabPage
+        })
+        tabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            tabPage.CanvasSize = UDim2.new(0,0,0, tabLayout.AbsoluteContentSize.Y + 20)
+        end)
+
+        Pages[data.Name] = tabPage
+    end
+
+    -- ---- UI KOMPONENT FONKSİYONLARI ----
+
+    -- Toggle
+    local function CreateToggle(parent, title, default, callback)
+        ToggleStates[title] = default or false
+        if callback then SettingsCallbacks[title] = callback end
+
+        local container = Create("Frame", {
+            Size = UDim2.new(1,0,0,45),
+            BackgroundColor3 = Colors.Surface,
+            Parent = parent
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(0,10) }),
+            Create("UIStroke", { Color = Colors.Accent2, Transparency = 0.5 })
+        })
+
+        Create("TextLabel", {
+            Text = title,
+            Size = UDim2.new(1,-80,1,0),
+            Position = UDim2.new(0,15,0,0),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            TextSize = 14,
+            TextColor3 = Colors.TextPrimary,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = container
+        })
+
+        local track = Create("Frame", {
+            Size = UDim2.new(0,60,0,30),
+            Position = UDim2.new(1,-70,0.5,-15),
+            BackgroundColor3 = default and Colors.Accent1 or Colors.SurfaceLight,
+            Parent = container
+        }, { Create("UICorner", { CornerRadius = UDim.new(0,15) }) })
+
+        local knob = Create("Frame", {
+            Size = UDim2.new(0,26,0,26),
+            Position = UDim2.new(default and 1 or 0, default and -28 or 2, 0.5, -13),
+            BackgroundColor3 = Color3.new(1,1,1),
+            Parent = track
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(0,13) }),
+            Create("UIStroke", { Color = Colors.Accent1, Thickness = 1 })
+        })
+
+        local button = Create("TextButton", {
+            Size = UDim2.new(1,0,1,0),
+            BackgroundTransparency = 1,
+            Text = "",
+            Parent = container
+        })
+
+        local function SetState(new)
+            ToggleStates[title] = new
+            TweenService:Create(track, TweenInfo.new(0.2), {
+                BackgroundColor3 = new and Colors.Accent1 or Colors.SurfaceLight
+            }):Play()
+            TweenService:Create(knob, TweenInfo.new(0.2, Enum.EasingStyle.Back), {
+                Position = UDim2.new(new and 1 or 0, new and -28 or 2, 0.5, -13)
+            }):Play()
+            if callback then callback(new) end
+        end
+
+        button.MouseButton1Click:Connect(function()
+            SetState(not ToggleStates[title])
+        end)
+
+        return container
+    end
+
+    -- Slider
+    local function CreateSlider(parent, title, min, max, default, suffix, callback)
+        ToggleStates[title] = default
+        if callback then SettingsCallbacks[title] = callback end
+
+        local container = Create("Frame", {
+            Size = UDim2.new(1,0,0,60),
+            BackgroundColor3 = Colors.Surface,
+            Parent = parent
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(0,10) }),
+            Create("UIStroke", { Color = Colors.Accent2, Transparency = 0.5 })
+        })
+
+        Create("TextLabel", {
+            Text = title,
+            Size = UDim2.new(1,-20,0,20),
+            Position = UDim2.new(0,15,0,8),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            TextSize = 14,
+            TextColor3 = Colors.TextPrimary,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = container
+        })
+
+        local valueLabel = Create("TextLabel", {
+            Text = tostring(default) .. (suffix or ""),
+            Size = UDim2.new(0,60,0,20),
+            Position = UDim2.new(1,-75,0,8),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            TextColor3 = Colors.Accent1,
+            TextXAlignment = Enum.TextXAlignment.Right,
+            Parent = container
+        })
+
+        local track = Create("Frame", {
+            Size = UDim2.new(1,-40,0,8),
+            Position = UDim2.new(0,20,0,38),
+            BackgroundColor3 = Colors.SurfaceLight,
+            Parent = container
+        }, { Create("UICorner", { CornerRadius = UDim.new(0,4) }) })
+
+        local fill = Create("Frame", {
+            Size = UDim2.new((default-min)/(max-min),0,1,0),
+            BackgroundColor3 = Colors.Accent1,
+            Parent = track
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(0,4) }),
+            Create("UIGradient", {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Colors.Accent1),
+                    ColorSequenceKeypoint.new(1, Colors.Accent3)
+                })
+            })
+        })
+
+        Create("Frame", {
+            Size = UDim2.new(0,20,0,20),
+            Position = UDim2.new(1,-10,0.5,-10),
+            BackgroundColor3 = Colors.Accent1,
+            Parent = fill
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(1,0) }),
+            Create("UIStroke", { Color = Colors.TextPrimary, Thickness = 2 })
+        })
+
+        local dragging = false
+
+        local function Update(input)
+            local x   = math.clamp(input.Position.X - track.AbsolutePosition.X, 0, track.AbsoluteSize.X)
+            local pct = x / track.AbsoluteSize.X
+            fill.Size = UDim2.new(pct,0,1,0)
+            local val = math.floor((min + (max-min)*pct) * 10) / 10
+            valueLabel.Text = tostring(val) .. (suffix or "")
+            ToggleStates[title] = val
+            if callback then callback(val) end
+        end
+
+        track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true; Update(input)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                Update(input)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+
+        return container
+    end
+
+    -- Buton
+    local function CreateButton(parent, text, icon, callback)
+        local btn = Create("TextButton", {
+            Size = UDim2.new(1,0,0,45),
+            BackgroundColor3 = Colors.Surface,
+            Text = "",
+            AutoButtonColor = false,
+            Parent = parent
+        }, {
+            Create("UICorner", { CornerRadius = UDim.new(0,10) }),
+            Create("UIStroke", { Color = Colors.Accent2, Transparency = 0.5 })
+        })
+
+        if icon and icon ~= "" then
+            Create("TextLabel", {
+                Text = icon,
+                Size = UDim2.new(0,40,1,0),
+                BackgroundTransparency = 1,
+                Font = Enum.Font.GothamBold,
+                TextSize = 20,
+                TextColor3 = Colors.Accent1,
+                Parent = btn
+            })
+        end
+
+        Create("TextLabel", {
+            Text = text,
+            Size = UDim2.new(1,-20,1,0),
+            Position = UDim2.new(0,(icon and icon~="") and 42 or 12,0,0),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            TextSize = 14,
+            TextColor3 = Colors.TextPrimary,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = btn
+        })
+
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.2), { BackgroundColor3 = Colors.SurfaceLight }):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(btn, TweenInfo.new(0.2), { BackgroundColor3 = Colors.Surface }):Play()
+        end)
+        btn.MouseButton1Click:Connect(callback)
+
+        return btn
+    end
+
+    -- Etiket / Başlık
+    local function CreateLabel(parent, text, color)
+        return Create("TextLabel", {
+            Text = text,
+            Size = UDim2.new(1,0,0,28),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.GothamBold,
+            TextSize = 13,
+            TextColor3 = color or Colors.TextMuted,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = parent
+        })
+    end
+
+    -- Ayırıcı çizgi
+    local function CreateDivider(parent)
+        return Create("Frame", {
+            Size = UDim2.new(1,0,0,1),
+            BackgroundColor3 = Colors.Accent2,
+            BackgroundTransparency = 0.7,
+            Parent = parent
+        })
+    end
+
+    -- Ayarları kaydet/yükle
+    local SETTINGS_FILE = "HyperHub_Settings.json"
+    local HttpSvc = game:GetService("HttpService")
+
+    local function SaveSettings()
+        if not writefile then
+            UILib.Notify("Settings", "Executor writefile desteği yok.", 3) return
+        end
+        local data = {}
+        for k,v in pairs(ToggleStates) do data[k] = v end
+        local ok, err = pcall(function() writefile(SETTINGS_FILE, HttpSvc:JSONEncode(data)) end)
+        if ok then UILib.Notify("✅ Kaydedildi", "Tüm ayarlar kaydedildi.", 3)
+        else UILib.Notify("❌ Hata", tostring(err):sub(1,40), 4) end
+    end
+
+    local function LoadSettings()
+        if not readfile or not isfile then
+            UILib.Notify("Settings", "Executor readfile desteği yok.", 3) return
+        end
+        if not isfile(SETTINGS_FILE) then
+            UILib.Notify("Settings", "Kayıtlı ayar bulunamadı.", 3) return
+        end
+        local ok, data = pcall(function() return HttpSvc:JSONDecode(readfile(SETTINGS_FILE)) end)
+        if not ok or type(data) ~= "table" then
+            UILib.Notify("❌ Hata", "Ayar dosyası bozuk.", 3) return
+        end
+        local loaded = 0
+        for title, value in pairs(data) do
+            local cb = SettingsCallbacks[title]
+            if cb then
+                ToggleStates[title] = value
+                pcall(cb, value)
+                loaded = loaded + 1
+            end
+        end
+        UILib.Notify("✅ Yüklendi", loaded .. " ayar geri yüklendi.", 3)
+    end
+
+    -- Klavye kısayolu: RightControl → pencereyi aç/kapat
+    UserInputService.InputBegan:Connect(function(inp, gpe)
+        if gpe then return end
+        if inp.KeyCode == Enum.KeyCode.RightControl then
+            MainPanel.Visible = not MainPanel.Visible
+        end
+    end)
+
+    -- Pencereyi göster
+    task.defer(function()
+        MainPanel.Visible = true
+    end)
+
+    -- ---- DIŞA AKTARILAN API ----
+    local Window = {
+        GetPage = function(_, name)
+            return Pages[name]
+        end,
+        AddToggle = function(_, pageName, title, default, callback)
+            return CreateToggle(Pages[pageName], title, default, callback)
+        end,
+        AddSlider = function(_, pageName, title, min, max, default, suffix, callback)
+            return CreateSlider(Pages[pageName], title, min, max, default, suffix, callback)
+        end,
+        AddButton = function(_, pageName, text, icon, callback)
+            return CreateButton(Pages[pageName], text, icon, callback)
+        end,
+        AddLabel = function(_, pageName, text, color)
+            return CreateLabel(Pages[pageName], text, color)
+        end,
+        AddDivider = function(_, pageName)
+            return CreateDivider(Pages[pageName])
+        end,
+        AddToggleTo = function(_, parent, title, default, callback)
+            return CreateToggle(parent, title, default, callback)
+        end,
+        AddSliderTo = function(_, parent, title, min, max, default, suffix, callback)
+            return CreateSlider(parent, title, min, max, default, suffix, callback)
+        end,
+        AddButtonTo = function(_, parent, text, icon, callback)
+            return CreateButton(parent, text, icon, callback)
+        end,
+        SaveSettings = SaveSettings,
+        LoadSettings = LoadSettings,
+        GetState = function(_, title) return ToggleStates[title] end,
+        SetState = function(_, title, val)
+            local cb = SettingsCallbacks[title]
+            ToggleStates[title] = val
+            if cb then pcall(cb, val) end
+        end,
+        MainPanel   = MainPanel,
+        HubGui      = HubGui,
+        Pages       = Pages,
+        ToggleStates = ToggleStates,
+    }
+    setmetatable(Window, { __index = Window })
+    return Window
+end
+
+return UILib
